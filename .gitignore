@@ -7,3 +7,16 @@ __pycache__/
 *.tsbuildinfo
 backend/*.sqlite3
 .DS_Store
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.*
+
+# Additional build/test output
+/build/
+coverage/
