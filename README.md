@@ -1,4 +1,6 @@
-# SETU — Polar Mission Risk Simulator
+# Setu
+
+## SETU — Polar Mission Risk Simulator
 
 SETU is a student prototype for SIH26062 that demonstrates one planning workflow: model how an Antarctic resupply delay could affect synthetic station fuel reserves, then test a hypothetical corrective action.
 
