@@ -1,16 +1,157 @@
-import {useEffect, useRef, useState} from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Globe from 'react-globe.gl';
-import {Forecast} from './simulation';
-const stations=[{name:'MAITRI',lat:-70.7644,lng:11.7342},{name:'BHARATI',lat:-69.40683,lng:76.19533}];
-const origin={name:'MUMBAI',lat:19.076,lng:72.8777};
-export default function MissionGlobe({forecast,delay}:{forecast:Forecast,delay:number}){
- const ref=useRef<any>(null);const [width,setWidth]=useState(800);const [failed,setFailed]=useState(false);
- useEffect(()=>{const resize=()=>setWidth(Math.max(320,document.querySelector('.globe-wrap')?.clientWidth||800));resize();window.addEventListener('resize',resize);return()=>window.removeEventListener('resize',resize)},[]);
- useEffect(()=>{const g=ref.current;if(g){g.pointOfView({lat:-70,lng:35,altitude:1.65},1000);g.controls().autoRotate=true;g.controls().autoRotateSpeed=.25}const timer=setTimeout(()=>{const c=document.querySelector('.globe-wrap canvas');if(!c)setFailed(true)},8000);return()=>clearTimeout(timer)},[]);
- useEffect(()=>{const probe=new Image();probe.onload=()=>setFailed(false);probe.onerror=()=>setFailed(true);probe.src='https://unpkg.com/three-globe/example/img/earth-night.jpg';return()=>{probe.onload=null;probe.onerror=null}},[]);
- const route=[{lat:origin.lat,lng:origin.lng},{lat:-25,lng:62},{lat:-48,lng:48},{lat:-68,lng:35}];
- const dots=[...stations.map(s=>({...s,color:s.name==='MAITRI'?(forecast.risk==='CRITICAL'?'#fb7185':forecast.risk==='ELEVATED'?'#fbbf24':'#6ce7a2'):'#6ce7a2'})),origin];
- const delayProgress=Math.max(.08,Math.min(.9,.77-delay/38));const ship=()=>{const i=delayProgress*(route.length-1),idx=Math.floor(i),f=i-idx,a=route[idx],b=route[Math.min(idx+1,route.length-1)];return{lat:a.lat+(b.lat-a.lat)*f,lng:a.lng+(b.lng-a.lng)*f}};
- return <div className="globe-wrap">{!failed?<Globe ref={ref} width={width} height={440} globeImageUrl="https://unpkg.com/three-globe/example/img/earth-night.jpg" backgroundColor="rgba(0,0,0,0)" showAtmosphere atmosphereColor="#51b9d7" atmosphereAltitude={.18} pointsData={dots} pointLat="lat" pointLng="lng" pointColor="color" pointAltitude={(d:any)=>d.name==='MUMBAI'?.008:.025} pointRadius={(d:any)=>d.name==='MUMBAI'?.4:.65} pointLabel={(d:any)=>d.name==='MAITRI'?`Maitri · ${forecast.runway.toFixed(0)} synthetic fuel days · ${forecast.risk}`:d.name==='BHARATI'?'Bharati · reference station; fuel inventory not modeled in this demo':'Mumbai · simulated route origin'} labelsData={dots} labelLat="lat" labelLng="lng" labelText="name" labelSize={(d:any)=>d.name==='MUMBAI'?.55:.8} labelDotRadius={.25} labelColor={()=>'#d9f5ff'} labelResolution={2} arcsData={[{startLat:origin.lat,startLng:origin.lng,endLat:-70,endLng:35}]} arcColor={()=>['#52d9ed','#52d9ed']} arcStroke={.35} arcAltitudeAutoScale={.34} arcDashLength={.6} arcDashGap={.3} arcDashAnimateTime={2800} htmlElementsData={[{...ship(),name:'ship'}]} htmlLat="lat" htmlLng="lng" htmlElement={()=>{const el=document.createElement('div');el.innerHTML='✦';el.style.cssText='color:#71e8f7;font-size:22px;text-shadow:0 0 14px #71e8f7';return el}} onGlobeReady={()=>{}} onGlobeClick={()=>{}} onPointClick={()=>{}} />:<div className="globe-fallback"><div className="fallback-earth"><span>ANTARCTICA</span><i>✦</i></div><p>Interactive globe texture unavailable. Simulation controls and forecasts remain active.</p></div>}
- <div className="globe-vignette"/><div className="map-tag origin-tag"><b>MB</b> MUMBAI <small>ORIGIN</small></div><div className="map-tag station-tag"><b className="pulse"/> MAITRI <small>{forecast.risk}</small></div><div className="map-tag station-tag station-b"><b className="pulse"/> BHARATI <small>STATION</small></div><div className="globe-coordinates">70°46′S · 11°44′E &nbsp; / &nbsp; SOUTHERN OCEAN</div></div>
+import type { Forecast } from './simulation';
+
+type GeoPoint = { lat: number; lng: number };
+
+const stations = [
+  { name: 'MAITRI', lat: -70.7644, lng: 11.7342 },
+  { name: 'BHARATI', lat: -69.40683, lng: 76.19533 },
+];
+const origin = { name: 'MUMBAI', lat: 19.076, lng: 72.8777 };
+const route: GeoPoint[] = [origin, { lat: -25, lng: 62 }, { lat: -48, lng: 48 }, { lat: -68, lng: 35 }];
+const globeImageUrl = '/earth-night.jpg';
+const initialSize = { width: 800, height: 280 };
+export const GLOBE_HOME = { lat: -66, lng: 45, altitude: 1.75 };
+
+function getShipPosition(delay: number): GeoPoint {
+  const progress = Math.max(0.08, Math.min(0.9, 0.77 - delay / 38));
+  const scaledIndex = progress * (route.length - 1);
+  const index = Math.floor(scaledIndex);
+  const fraction = scaledIndex - index;
+  const from = route[index];
+  const to = route[Math.min(index + 1, route.length - 1)];
+  return {
+    lat: from.lat + (to.lat - from.lat) * fraction,
+    lng: from.lng + (to.lng - from.lng) * fraction,
+  };
+}
+
+export default function MissionGlobe({ forecast, delay }: { forecast: Forecast; delay: number }) {
+  const globeRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState(initialSize);
+  const [failed, setFailed] = useState(false);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const measure = (width = container.clientWidth, height = container.clientHeight) => {
+      if (width <= 0 || height <= 0) return;
+      setSize(current => current.width === width && current.height === height ? current : { width, height });
+    };
+
+    measure();
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(entries => {
+        const bounds = entries[0]?.contentRect;
+        if (bounds) measure(Math.round(bounds.width), Math.round(bounds.height));
+      });
+      observer.observe(container);
+      return () => observer.disconnect();
+    }
+
+    const onResize = () => measure();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    const globe = globeRef.current;
+    if (globe) {
+      globe.pointOfView(GLOBE_HOME, 0);
+      globe.controls().autoRotate = false;
+    }
+
+    const timer = window.setTimeout(() => {
+      if (!containerRef.current?.querySelector('canvas')) setFailed(true);
+    }, 8000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const dots = stations.map(station => ({
+    ...station,
+    color: station.name === 'MAITRI'
+      ? forecast.risk === 'CRITICAL' ? '#fb7185' : forecast.risk === 'ELEVATED' ? '#fbbf24' : '#6ce7a2'
+      : '#6ce7a2',
+  })).concat({ ...origin, color: '#56d9e8' });
+
+  const ship = getShipPosition(delay);
+  const labels = [
+    ...stations.map(station => ({
+      ...station,
+      markerType: 'label' as const,
+      detail: station.name === 'MAITRI' ? forecast.risk : 'REFERENCE',
+      altitude: 0.035,
+    })),
+    { ...origin, markerType: 'label' as const, detail: 'ORIGIN', altitude: 0.02 },
+  ];
+  const htmlMarkers = [
+    { ...ship, name: 'RESUPPLY VESSEL', markerType: 'vessel' as const, altitude: 0.045 },
+    ...labels,
+  ];
+
+  return (
+    <div className="globe-wrap" ref={containerRef} data-testid="globe-wrap">
+      {!failed ? (
+        <Globe
+          ref={globeRef}
+          width={size.width}
+          height={size.height}
+          globeImageUrl={globeImageUrl}
+          backgroundColor="rgba(0,0,0,0)"
+          showAtmosphere
+          atmosphereColor="#51b9d7"
+          atmosphereAltitude={0.12}
+          pointsData={dots}
+          pointLat="lat"
+          pointLng="lng"
+          pointColor="color"
+          pointAltitude={(point: any) => point.name === 'MUMBAI' ? 0.008 : 0.025}
+          pointRadius={(point: any) => point.name === 'MUMBAI' ? 0.65 : 1.05}
+          pointLabel={(point: any) => point.name === 'MAITRI'
+            ? `Maitri · ${forecast.runway.toFixed(0)} synthetic fuel days · ${forecast.risk}`
+            : point.name === 'BHARATI'
+              ? 'Bharati · reference station; fuel inventory not modeled in this demo'
+              : 'Mumbai · simulated route origin'}
+          pathsData={[route.map(({ lat, lng }) => [lat, lng])]}
+          pathColor={() => '#52d9ed'}
+          pathStroke={0.12}
+          pathResolution={1}
+          pathDashLength={0.6}
+          pathDashGap={0.3}
+          pathDashAnimateTime={2800}
+          htmlElementsData={htmlMarkers}
+          htmlLat="lat"
+          htmlLng="lng"
+          htmlAltitude="altitude"
+          htmlElement={(marker: any) => {
+            const element = document.createElement('div');
+            if (marker.markerType === 'vessel') {
+              element.className = 'globe-vessel-marker';
+              element.setAttribute('aria-label', 'Resupply vessel');
+              element.textContent = '✦';
+              return element;
+            }
+            element.className = `globe-location-label ${marker.name.toLowerCase()}`;
+            element.setAttribute('aria-label', `${marker.name} ${marker.detail}`);
+            const name = document.createElement('strong');
+            name.textContent = marker.name;
+            const detail = document.createElement('small');
+            detail.textContent = marker.detail;
+            element.append(name, detail);
+            return element;
+          }}
+        />
+      ) : (
+        <div className="globe-fallback">
+          <div className="fallback-earth"><span>ANTARCTICA</span><i>✦</i></div>
+          <p>Interactive globe texture unavailable. Simulation controls and forecasts remain active.</p>
+        </div>
+      )}
+      <div className="globe-vignette" />
+      <div className="globe-coordinates">70°46′S · 11°44′E &nbsp; / &nbsp; SOUTHERN OCEAN</div>
+    </div>
+  );
 }

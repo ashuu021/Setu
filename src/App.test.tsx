@@ -152,6 +152,7 @@ describe('dashboard layout regression',()=>{
   expect(stylesheet).toContain('.dashboard-grid{grid-template-rows:minmax(370px,auto) auto');
   expect(stylesheet).toContain('.action-panel{height:max-content;min-height:300px;overflow:visible');
   expect(stylesheet).toContain('.bottom-grid{align-items:start}');
+  expect(stylesheet).toContain('.forecast-panel{align-self:stretch;min-height:285px}');
   expect(stylesheet).toContain('@media(max-height:760px) and (min-width:781px)');
  });
 });
