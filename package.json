@@ -1,0 +1,9 @@
+{
+  "name": "setu-polar-risk-simulator",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": { "dev": "vite --host 0.0.0.0", "build": "tsc -b && vite build", "preview": "vite preview --host 0.0.0.0", "test": "vitest run" },
+  "dependencies": { "@vitejs/plugin-react": "latest", "vite": "latest", "typescript": "latest", "react": "latest", "react-dom": "latest", "lucide-react": "latest", "recharts": "latest", "react-globe.gl": "latest", "three": "latest" },
+  "devDependencies": { "@types/react": "latest", "@types/react-dom": "latest", "@types/three": "latest", "vitest": "^4.1.11", "jsdom": "^26.1.0", "@testing-library/react": "latest", "@testing-library/user-event": "latest" }
+}
